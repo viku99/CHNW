@@ -1,9 +1,8 @@
-
 import React, { useMemo } from 'react';
 
 const StarBackground: React.FC = () => {
   const stars = useMemo(() => {
-    return Array.from({ length: 150 }).map((_, i) => ({
+    return Array.from({ length: 100 }).map((_, i) => ({
       id: i,
       left: `${Math.random() * 100}%`,
       top: `${Math.random() * 100}%`,
@@ -14,7 +13,7 @@ const StarBackground: React.FC = () => {
   }, []);
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-[-1]">
+    <div className="fixed inset-0 pointer-events-none z-0">
       {stars.map((star) => (
         <div
           key={star.id}
