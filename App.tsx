@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StarBackground from './components/StarBackground';
 import FireworksCanvas from './components/FireworksCanvas';
 
@@ -8,8 +8,13 @@ const App: React.FC = () => {
   const [stage, setStage] = useState<AppStage>('intro');
   const [noCount, setNoCount] = useState(0);
   const [yesLoopIndex, setYesLoopIndex] = useState(0);
-  const [noPosition, setNoPosition] = useState<{ top: string; left: string; position: 'relative' | 'fixed' }>({ top: 'auto', left: 'auto', position: 'relative' });
+  const [noPosition, setNoPosition] = useState<{ top: string; left: string; position: 'relative' | 'fixed' }>({ 
+    top: 'auto', 
+    left: 'auto', 
+    position: 'relative' 
+  });
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const noButtonRef = useRef<HTMLButtonElement>(null);
   const name = "Chaitra";
 
   const yesQuestions = [
@@ -33,41 +38,73 @@ const App: React.FC = () => {
     "Psych!", "Try again", "Nope."
   ];
 
-  // Simple loading animation
+  // Teleport logic for the NO button
+  const teleportNoButton = useCallback(() => {
+    const btnWidth = 140;
+    const btnHeight = 50;
+    const margin = 60; // Safety margin from edges
+
+    const maxX = window.innerWidth - btnWidth - margin;
+    const maxY = window.innerHeight - btnHeight - margin;
+
+    // Erratic behavior: occasionally jump twice
+    const randomX = Math.max(margin, Math.floor(Math.random() * maxX));
+    const randomY = Math.max(margin, Math.floor(Math.random() * maxY));
+
+    setNoPosition({
+      top: `${randomY}px`,
+      left: `${randomX}px`,
+      position: 'fixed'
+    });
+    setNoCount(prev => prev + 1);
+  }, []);
+
+  // Fleeing behavior: check distance to mouse
+  useEffect(() => {
+    if ((stage === 'asking' || stage === 'confirming') && noCount >= 1) {
+      const handleMouseMove = (e: MouseEvent) => {
+        if (!noButtonRef.current) return;
+        
+        const rect = noButtonRef.current.getBoundingClientRect();
+        const buttonCenterX = rect.left + rect.width / 2;
+        const buttonCenterY = rect.top + rect.height / 2;
+        
+        const distance = Math.sqrt(
+          Math.pow(e.clientX - buttonCenterX, 2) + 
+          Math.pow(e.clientY - buttonCenterY, 2)
+        );
+
+        // If mouse gets within 120 pixels, flee!
+        const threshold = noCount > 10 ? 180 : 120;
+        if (distance < threshold) {
+          teleportNoButton();
+        }
+      };
+
+      window.addEventListener('mousemove', handleMouseMove);
+      return () => window.removeEventListener('mousemove', handleMouseMove);
+    }
+  }, [stage, noCount, teleportNoButton]);
+
+  // Loading animation simulation
   useEffect(() => {
     if (stage === 'loading') {
       const interval = setInterval(() => {
         setLoadingProgress(prev => {
           if (prev >= 100) {
             clearInterval(interval);
-            setTimeout(() => setStage('success'), 500);
+            setTimeout(() => {
+              setStage('success');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 800);
             return 100;
           }
           return prev + 2;
         });
-      }, 30);
+      }, 50);
       return () => clearInterval(interval);
     }
   }, [stage]);
-
-  const moveNoButton = useCallback(() => {
-    if (noCount >= 3) {
-      const btnWidth = 120;
-      const btnHeight = 50;
-      const x = Math.random() * (window.innerWidth - btnWidth);
-      const y = Math.random() * (window.innerHeight - btnHeight);
-      setNoPosition({ 
-        top: `${y}px`, 
-        left: `${x}px`, 
-        position: 'fixed' 
-      });
-    }
-  }, [noCount]);
-
-  const handleNo = () => {
-    setNoCount(prev => prev + 1);
-    moveNoButton();
-  };
 
   const handleYes = () => {
     if (yesLoopIndex < yesQuestions.length - 1) {
@@ -79,68 +116,71 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#010206] text-white flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative overflow-x-hidden">
       <StarBackground />
       {stage === 'success' && <FireworksCanvas />}
       
-      {/* Background Ambience */}
-      <div className={`absolute inset-0 pointer-events-none transition-opacity duration-1000 ${stage === 'success' ? 'opacity-30' : 'opacity-10'}`}>
-        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-red-900/40 rounded-full blur-[150px] animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-purple-900/40 rounded-full blur-[150px] animate-pulse" />
+      {/* Dynamic Background Glow */}
+      <div className={`fixed inset-0 pointer-events-none transition-opacity duration-1000 -z-10 ${stage === 'success' ? 'opacity-50' : 'opacity-20'}`}>
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-red-900/40 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-900/40 rounded-full blur-[120px] animate-pulse" />
       </div>
 
       <main className="z-10 w-full max-w-2xl relative">
-        {/* STAGE: INTRO */}
+        {/* STAGE 1: INTRO */}
         {stage === 'intro' && (
           <div 
-            className="text-center space-y-12 animate-fade-in cursor-pointer group"
+            className="text-center space-y-8 cursor-pointer group"
             onClick={() => setStage('asking')}
           >
-            <div className="space-y-4">
-              <h1 className="text-6xl md:text-9xl font-playfair italic font-light tracking-[0.2em] text-white transition-all duration-700 group-hover:tracking-[0.4em] drop-shadow-2xl">
+            <div className="space-y-4 animate-float">
+              <h1 className="text-7xl md:text-9xl font-playfair italic font-light tracking-tighter text-white transition-all duration-700 group-hover:tracking-normal">
                 {name}
               </h1>
-              <div className="h-px w-32 bg-gradient-to-r from-transparent via-red-500 to-transparent mx-auto group-hover:w-64 transition-all duration-700" />
+              <div className="h-[1px] w-24 bg-red-600 mx-auto group-hover:w-48 transition-all duration-700" />
             </div>
-            <p className="text-slate-500 uppercase tracking-[0.8em] text-[10px] animate-pulse">
-              Click to initiate protocol
+            <p className="text-slate-400 uppercase tracking-[1em] text-[10px] opacity-60">
+              Initiating encrypted message...
             </p>
           </div>
         )}
 
-        {/* STAGE: ASKING & CONFIRMING */}
+        {/* STAGE 2: ASKING & CONFIRMING */}
         {(stage === 'asking' || stage === 'confirming') && (
-          <div className="glass p-8 md:p-16 rounded-[3rem] animate-zoom-in text-center max-w-lg mx-auto">
-            <h2 className="text-2xl md:text-3xl font-playfair mb-12 leading-tight text-white h-24 flex items-center justify-center">
+          <div className="glass p-10 md:p-20 rounded-[3rem] text-center w-full max-w-xl mx-auto shadow-2xl scale-in relative">
+            <h2 className="text-3xl md:text-4xl font-playfair mb-16 leading-tight text-white min-h-[100px] flex items-center justify-center">
               {stage === 'asking' ? (
-                <>Do you want to know <br/><span className="text-red-400 italic ml-2">something special?</span></>
+                <span>Chaitra, I have something <span className="text-red-500 italic">very important</span> to tell you...</span>
               ) : (
-                yesQuestions[yesLoopIndex]
+                <span className="animate-fade-in">{yesQuestions[yesLoopIndex]}</span>
               )}
             </h2>
 
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-8">
               <button
                 onClick={handleYes}
                 style={{ transform: `scale(${1 + yesLoopIndex * 0.05})` }}
-                className="w-full py-5 bg-white text-black font-black rounded-2xl hover:bg-red-500 hover:text-white transition-all duration-300 shadow-2xl text-lg uppercase tracking-widest z-20 active:scale-95"
+                className="w-full py-6 bg-white text-black font-black rounded-3xl hover:bg-red-600 hover:text-white transition-all duration-300 shadow-xl text-xl uppercase tracking-widest z-20"
               >
-                {yesLoopIndex > 0 ? "YES, TELL ME!" : "YES"}
+                {yesLoopIndex > 0 ? "YES, ABSOLUTELY!" : "TELL ME"}
               </button>
               
               <button
-                onClick={handleNo}
-                onMouseEnter={noCount >= 3 ? handleNo : undefined}
+                ref={noButtonRef}
+                onMouseEnter={teleportNoButton}
+                onClick={teleportNoButton}
                 style={{ 
                   position: noPosition.position,
                   top: noPosition.top,
                   left: noPosition.left,
-                  width: noCount >= 3 ? '140px' : '100%',
-                  transition: 'all 0.15s cubic-bezier(0.18, 0.89, 0.32, 1.28)',
-                  zIndex: 50
+                  width: noPosition.position === 'fixed' ? '140px' : '100%',
+                  zIndex: 50,
+                  transition: noCount > 0 && noCount < 5 ? 'all 0.2s ease-out' : 'none'
                 }}
                 className={`py-4 rounded-2xl font-bold border ${
-                  noCount > 0 ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-white/5 text-slate-500 border-white/5'
+                  noCount > 0 
+                    ? 'bg-red-500/20 text-red-500 border-red-500/40 shadow-lg cursor-none' 
+                    : 'bg-white/5 text-slate-500 border-white/10'
                 }`}
               >
                 {noMessages[noCount % noMessages.length]}
@@ -149,62 +189,85 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* STAGE: LOADING */}
+        {/* STAGE 3: LOADING */}
         {stage === 'loading' && (
-          <div className="text-center space-y-10 animate-fade-in">
-            <div className="relative w-32 h-32 mx-auto">
-              <div className="absolute inset-0 border-4 border-white/5 rounded-full" />
-              <div 
-                className="absolute inset-0 border-4 border-red-500 rounded-full transition-all" 
-                style={{ clipPath: `inset(0 ${100 - loadingProgress}% 0 0)` }}
-              />
-              <div className="absolute inset-0 flex items-center justify-center font-bold text-xl text-white">
+          <div className="text-center space-y-12">
+            <div className="relative w-48 h-48 mx-auto">
+              <svg className="w-full h-full transform -rotate-90">
+                <circle
+                  cx="96"
+                  cy="96"
+                  r="88"
+                  stroke="currentColor"
+                  strokeWidth="8"
+                  fill="transparent"
+                  className="text-white/5"
+                />
+                <circle
+                  cx="96"
+                  cy="96"
+                  r="88"
+                  stroke="currentColor"
+                  strokeWidth="8"
+                  fill="transparent"
+                  strokeDasharray={552.92}
+                  strokeDashoffset={552.92 - (552.92 * loadingProgress) / 100}
+                  className="text-red-600 transition-all duration-100"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center font-black text-3xl text-white">
                 {loadingProgress}%
               </div>
             </div>
-            <p className="text-xl font-playfair italic text-white animate-pulse">Scanning the matrix...</p>
+            <p className="text-2xl font-playfair italic text-white animate-pulse tracking-[0.2em]">
+              PREPARING THE REVEAL...
+            </p>
           </div>
         )}
 
-        {/* STAGE: SUCCESS (THE PRANK) */}
+        {/* STAGE 4: THE PRANK (SUCCESS) */}
         {stage === 'success' && (
-          <div className="text-center space-y-12 animate-zoom-in">
-            <div className="relative inline-block scale-125 mb-6">
-               <span className="text-9xl mb-4 block animate-bounce">😹</span>
-               <div className="absolute inset-0 bg-red-600/20 blur-[100px] rounded-full animate-pulse -z-10" />
+          <div className="text-center space-y-12 w-full py-10">
+            <div className="relative inline-block mb-10">
+               <span className="text-[150px] md:text-[200px] block animate-bounce drop-shadow-[0_0_50px_rgba(255,0,0,0.6)]">😹</span>
             </div>
             
-            <div className="glass p-8 md:p-12 rounded-[4rem] border-red-500/20 space-y-10">
-              <h3 className="text-5xl md:text-7xl font-playfair italic text-white leading-tight animate-slide-up">
+            <div className="glass p-12 md:p-20 rounded-[4rem] border-red-600/30 space-y-12 shadow-[0_0_100px_rgba(255,0,0,0.2)]">
+              <h3 className="text-5xl md:text-8xl font-playfair italic text-white font-black leading-none">
                 WHAT U THOUGHT?
               </h3>
               
-              <div className="space-y-6 animate-slide-up" style={{ animationDelay: '0.4s' }}>
-                <p className="text-2xl md:text-4xl font-playfair text-slate-100 font-bold tracking-wide">
+              <div className="space-y-8">
+                <p className="text-3xl md:text-5xl font-playfair text-slate-300 font-bold">
                   IM GONNA PROPOSE?
                 </p>
-                <div className="h-px w-48 bg-gradient-to-r from-transparent via-red-500 to-transparent mx-auto" />
-                <p className="text-3xl md:text-5xl font-playfair italic text-red-500 font-black">
+                
+                <div className="h-[2px] w-full max-w-[400px] bg-red-600 mx-auto opacity-30" />
+                
+                <p className="text-4xl md:text-7xl font-playfair italic text-red-600 font-black uppercase tracking-tighter animate-glitch">
                   NOOOOO UR TOO OLD LADY!
                 </p>
                 
-                <div className="pt-8 space-y-6">
-                  <p className="text-lg text-slate-400 font-light tracking-[0.3em]">I JUST WANT U TO KNOW...</p>
-                  <p className="text-6xl md:text-9xl font-black text-red-600 uppercase tracking-tighter animate-pulse-red">
-                    UR STUPID
-                  </p>
-                  <p className="text-5xl md:text-8xl font-dancing text-white mt-6 animate-shake inline-block">
-                    AHAHAHAHAH!
-                  </p>
+                <div className="pt-10 space-y-8">
+                  <p className="text-sm text-slate-500 font-light tracking-[1em] uppercase">MESSAGE FROM THE HEART:</p>
+                  
+                  <div className="space-y-6">
+                    <p className="text-6xl md:text-[9rem] font-black text-red-600 uppercase tracking-tighter leading-none animate-shake inline-block">
+                      UR A STUPID
+                    </p>
+                    <p className="text-5xl md:text-9xl font-dancing text-white block mt-6 drop-shadow-[0_0_20px_rgba(255,255,255,0.4)]">
+                      AHAHAHAHAH!
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-10">
+              <div className="pt-20">
                 <button
-                  onClick={() => { setStage('intro'); setNoCount(0); setYesLoopIndex(0); setLoadingProgress(0); setNoPosition({ top: 'auto', left: 'auto', position: 'relative' }); }}
-                  className="px-12 py-4 rounded-full border border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white transition-all text-xs uppercase tracking-[0.5em]"
+                  onClick={() => window.location.reload()}
+                  className="px-14 py-5 rounded-full border border-red-500/20 text-red-500 hover:bg-red-600 hover:text-white transition-all text-xs uppercase tracking-[1em] font-black shadow-lg"
                 >
-                  Regret your life choices
+                  START OVER
                 </button>
               </div>
             </div>
@@ -212,9 +275,9 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <footer className="fixed bottom-10 left-0 w-full flex justify-center opacity-20 pointer-events-none">
-        <span className="text-red-500 text-[10px] tracking-[1.5em] uppercase font-black">
-          CHAITRA • PROTOCOL • 2025
+      <footer className="w-full flex justify-center py-16 opacity-30 pointer-events-none mt-auto">
+        <span className="text-red-700 text-[10px] md:text-xs tracking-[2em] uppercase font-black">
+          CHAITRA • 2025 • PRANKED
         </span>
       </footer>
     </div>
