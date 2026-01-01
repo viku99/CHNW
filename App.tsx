@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StarBackground from './components/StarBackground';
 import FireworksCanvas from './components/FireworksCanvas';
+import Countdown from './components/Countdown';
+import { fetchNewYearMessage } from './services/geminiService';
+import { GreetingMessage } from './types';
 
 type AppStage = 'intro' | 'asking' | 'confirming' | 'loading' | 'success';
 
@@ -8,14 +11,20 @@ const App: React.FC = () => {
   const [stage, setStage] = useState<AppStage>('intro');
   const [noCount, setNoCount] = useState(0);
   const [yesLoopIndex, setYesLoopIndex] = useState(0);
+  const [isTeleporting, setIsTeleporting] = useState(false);
+  const [isJittering, setIsJittering] = useState(false);
+  const [isNear, setIsNear] = useState(false);
   const [noPosition, setNoPosition] = useState<{ top: string; left: string; position: 'relative' | 'fixed' }>({ 
     top: 'auto', 
     left: 'auto', 
     position: 'relative' 
   });
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [aiMessage, setAiMessage] = useState<GreetingMessage | null>(null);
   const noButtonRef = useRef<HTMLButtonElement>(null);
+  const lastTeleportRef = useRef<number>(0);
   const name = "Chaitra";
+  const targetYear = 2026;
 
   const yesQuestions = [
     "Wait... do you really want to know?",
@@ -35,33 +44,42 @@ const App: React.FC = () => {
     "Why not?", "Please?", "Don't be like that!", "Chaitra, pleaseeee!",
     "I'll be sad...", "I'm crying now.", "Okay, fine.", "Wait, no!",
     "STOP CLICKING NO", "You're mean.", "Still no?", "Catch me if you can!",
-    "Psych!", "Try again", "Nope."
+    "Psych!", "Try again", "Nope.", "Keep trying...", "Almost had it!"
   ];
 
-  // Teleport logic for the NO button
   const teleportNoButton = useCallback(() => {
-    const btnWidth = 140;
-    const btnHeight = 50;
-    const margin = 60; // Safety margin from edges
+    const now = Date.now();
+    // Throttling to prevent lag but keeping it responsive
+    if (now - lastTeleportRef.current < 40) return;
+    lastTeleportRef.current = now;
 
-    const maxX = window.innerWidth - btnWidth - margin;
-    const maxY = window.innerHeight - btnHeight - margin;
+    const btnWidth = 160;
+    const btnHeight = 60;
+    const padding = 20; // Minimum distance from screen edge
 
-    // Erratic behavior: occasionally jump twice
-    const randomX = Math.max(margin, Math.floor(Math.random() * maxX));
-    const randomY = Math.max(margin, Math.floor(Math.random() * maxY));
+    // Calculate safe bounds
+    const maxX = Math.max(padding, window.innerWidth - btnWidth - padding);
+    const maxY = Math.max(padding, window.innerHeight - btnHeight - padding);
 
+    // Ensure it doesn't just stay in one spot - pick a point far from current
+    const randomX = Math.floor(Math.random() * maxX);
+    const randomY = Math.floor(Math.random() * maxY);
+
+    setIsTeleporting(true);
+    setIsNear(false);
     setNoPosition({
       top: `${randomY}px`,
       left: `${randomX}px`,
       position: 'fixed'
     });
     setNoCount(prev => prev + 1);
+
+    setTimeout(() => setIsTeleporting(false), 200);
   }, []);
 
-  // Fleeing behavior: check distance to mouse
+  // Fleeing and Jitter Logic
   useEffect(() => {
-    if ((stage === 'asking' || stage === 'confirming') && noCount >= 1) {
+    if ((stage === 'asking' || stage === 'confirming')) {
       const handleMouseMove = (e: MouseEvent) => {
         if (!noButtonRef.current) return;
         
@@ -74,10 +92,26 @@ const App: React.FC = () => {
           Math.pow(e.clientY - buttonCenterY, 2)
         );
 
-        // If mouse gets within 120 pixels, flee!
-        const threshold = noCount > 10 ? 180 : 120;
-        if (distance < threshold) {
+        // Fleeing threshold - grows slightly to be annoying but capped to keep it visible
+        const fleeThreshold = Math.min(130 + (noCount * 4), 300);
+        // Jitter threshold - button shakes when mouse is somewhat close
+        const jitterThreshold = fleeThreshold + 100;
+        // Temptation threshold - button glows when mouse is further away
+        const nearThreshold = jitterThreshold + 150;
+
+        if (distance < fleeThreshold) {
           teleportNoButton();
+          setIsJittering(false);
+          setIsNear(false);
+        } else if (distance < jitterThreshold) {
+          setIsJittering(true);
+          setIsNear(true);
+        } else if (distance < nearThreshold) {
+          setIsNear(true);
+          setIsJittering(false);
+        } else {
+          setIsNear(false);
+          setIsJittering(false);
         }
       };
 
@@ -86,9 +120,9 @@ const App: React.FC = () => {
     }
   }, [stage, noCount, teleportNoButton]);
 
-  // Loading animation simulation
   useEffect(() => {
     if (stage === 'loading') {
+      fetchNewYearMessage(name, targetYear).then(msg => setAiMessage(msg));
       const interval = setInterval(() => {
         setLoadingProgress(prev => {
           if (prev >= 100) {
@@ -99,9 +133,9 @@ const App: React.FC = () => {
             }, 800);
             return 100;
           }
-          return prev + 2;
+          return prev + 1.2;
         });
-      }, 50);
+      }, 30);
       return () => clearInterval(interval);
     }
   }, [stage]);
@@ -116,53 +150,53 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative overflow-x-hidden">
+    <div className="min-h-screen w-full flex flex-col items-center p-4 md:p-8 lg:p-12 relative overflow-hidden transition-all duration-700 bg-[#010206]">
       <StarBackground />
       {stage === 'success' && <FireworksCanvas />}
       
-      {/* Dynamic Background Glow */}
-      <div className={`fixed inset-0 pointer-events-none transition-opacity duration-1000 -z-10 ${stage === 'success' ? 'opacity-50' : 'opacity-20'}`}>
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-red-900/40 rounded-full blur-[120px] animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-900/40 rounded-full blur-[120px] animate-pulse" />
+      <div className={`fixed inset-0 pointer-events-none transition-opacity duration-1000 -z-10 ${stage === 'success' ? 'opacity-80' : 'opacity-30'}`}>
+        <div className="absolute top-[-10%] left-[-10%] w-[80%] h-[80%] bg-red-900/10 rounded-full blur-[180px] animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[80%] h-[80%] bg-purple-900/10 rounded-full blur-[180px] animate-pulse" />
       </div>
 
-      <main className="z-10 w-full max-w-2xl relative">
-        {/* STAGE 1: INTRO */}
+      <main className="z-10 w-full max-w-5xl my-auto flex flex-col items-center">
         {stage === 'intro' && (
           <div 
-            className="text-center space-y-8 cursor-pointer group"
+            className="text-center space-y-10 md:space-y-20 cursor-pointer group animate-scale-in py-10"
             onClick={() => setStage('asking')}
           >
-            <div className="space-y-4 animate-float">
-              <h1 className="text-7xl md:text-9xl font-playfair italic font-light tracking-tighter text-white transition-all duration-700 group-hover:tracking-normal">
+            <div className="space-y-4 md:space-y-8 animate-float">
+              <h1 className="text-7xl md:text-[10rem] lg:text-[13rem] font-playfair italic font-black tracking-tight text-white transition-all duration-1000 group-hover:tracking-normal drop-shadow-[0_15px_50px_rgba(255,255,255,0.15)]">
                 {name}
               </h1>
-              <div className="h-[1px] w-24 bg-red-600 mx-auto group-hover:w-48 transition-all duration-700" />
+              <div className="h-[2px] w-24 md:w-48 bg-gradient-to-r from-transparent via-red-600 to-transparent mx-auto group-hover:w-full transition-all duration-1000 max-w-lg" />
             </div>
-            <p className="text-slate-400 uppercase tracking-[1em] text-[10px] opacity-60">
-              Initiating encrypted message...
-            </p>
+            <div className="space-y-6">
+              <p className="text-slate-500 uppercase tracking-[1.5em] text-[10px] md:text-xs font-black opacity-60 animate-pulse text-center w-full">
+                CLICK TO START PROTOCOL {targetYear}
+              </p>
+              <Countdown targetYear={targetYear} />
+            </div>
           </div>
         )}
 
-        {/* STAGE 2: ASKING & CONFIRMING */}
         {(stage === 'asking' || stage === 'confirming') && (
-          <div className="glass p-10 md:p-20 rounded-[3rem] text-center w-full max-w-xl mx-auto shadow-2xl scale-in relative">
-            <h2 className="text-3xl md:text-4xl font-playfair mb-16 leading-tight text-white min-h-[100px] flex items-center justify-center">
+          <div className="glass p-8 md:p-16 lg:p-24 rounded-[3rem] md:rounded-[6rem] text-center w-full max-w-3xl shadow-2xl animate-scale-in relative border-white/5 mx-auto">
+            <h2 className="text-3xl md:text-5xl lg:text-6xl font-playfair mb-12 md:mb-20 leading-tight text-white min-h-[160px] flex items-center justify-center font-bold px-2">
               {stage === 'asking' ? (
-                <span>Chaitra, I have something <span className="text-red-500 italic">very important</span> to tell you...</span>
+                <span>Chaitra, I have something <span className="text-red-600 italic block mt-4">extremely important</span> to tell you...</span>
               ) : (
                 <span className="animate-fade-in">{yesQuestions[yesLoopIndex]}</span>
               )}
             </h2>
 
-            <div className="flex flex-col gap-8">
+            <div className="flex flex-col gap-6 md:gap-10 max-w-md mx-auto relative min-h-[160px] items-center justify-center">
               <button
                 onClick={handleYes}
-                style={{ transform: `scale(${1 + yesLoopIndex * 0.05})` }}
-                className="w-full py-6 bg-white text-black font-black rounded-3xl hover:bg-red-600 hover:text-white transition-all duration-300 shadow-xl text-xl uppercase tracking-widest z-20"
+                style={{ transform: `scale(${1 + yesLoopIndex * 0.06})` }}
+                className="w-full py-6 md:py-8 bg-white text-black font-black rounded-[2rem] md:rounded-[3rem] hover:bg-red-600 hover:text-white transition-all duration-300 shadow-2xl text-xl md:text-3xl uppercase tracking-[0.2em] z-30 active:scale-95 ring-offset-4 ring-offset-[#010206] ring-white/10"
               >
-                {yesLoopIndex > 0 ? "YES, ABSOLUTELY!" : "TELL ME"}
+                {yesLoopIndex > 0 ? "YES! YES!" : "TELL ME"}
               </button>
               
               <button
@@ -173,15 +207,15 @@ const App: React.FC = () => {
                   position: noPosition.position,
                   top: noPosition.top,
                   left: noPosition.left,
-                  width: noPosition.position === 'fixed' ? '140px' : '100%',
+                  width: noPosition.position === 'fixed' ? '160px' : '100%',
                   zIndex: 50,
-                  transition: noCount > 0 && noCount < 5 ? 'all 0.2s ease-out' : 'none'
+                  transition: noCount > 0 && !isTeleporting ? 'all 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.1)' : 'none'
                 }}
-                className={`py-4 rounded-2xl font-bold border ${
+                className={`py-5 rounded-[2rem] font-black border transition-all text-[10px] md:text-xs uppercase tracking-widest ${
                   noCount > 0 
-                    ? 'bg-red-500/20 text-red-500 border-red-500/40 shadow-lg cursor-none' 
-                    : 'bg-white/5 text-slate-500 border-white/10'
-                }`}
+                    ? 'text-red-400 border-red-500/40 shadow-xl cursor-none pointer-events-auto bg-red-600/20' 
+                    : 'bg-white/5 text-slate-500 border-white/10 hover:bg-white/10'
+                } ${isTeleporting ? 'animate-teleport' : ''} ${isJittering ? 'animate-shake' : ''} ${isNear ? 'animate-wobble animate-glow-pulse !text-red-500 !bg-red-600/30' : ''}`}
               >
                 {noMessages[noCount % noMessages.length]}
               </button>
@@ -189,96 +223,78 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* STAGE 3: LOADING */}
         {stage === 'loading' && (
-          <div className="text-center space-y-12">
-            <div className="relative w-48 h-48 mx-auto">
-              <svg className="w-full h-full transform -rotate-90">
-                <circle
-                  cx="96"
-                  cy="96"
-                  r="88"
-                  stroke="currentColor"
-                  strokeWidth="8"
-                  fill="transparent"
-                  className="text-white/5"
-                />
-                <circle
-                  cx="96"
-                  cy="96"
-                  r="88"
-                  stroke="currentColor"
-                  strokeWidth="8"
-                  fill="transparent"
-                  strokeDasharray={552.92}
-                  strokeDashoffset={552.92 - (552.92 * loadingProgress) / 100}
-                  className="text-red-600 transition-all duration-100"
-                />
+          <div className="text-center space-y-16 md:space-y-24 animate-scale-in py-10">
+            <div className="relative w-64 h-64 md:w-80 md:h-80 mx-auto">
+              <svg className="w-full h-full transform -rotate-90 drop-shadow-[0_0_40px_rgba(220,38,38,0.3)]">
+                <circle cx="50%" cy="50%" r="45%" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/5" />
+                <circle cx="50%" cy="50%" r="45%" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray="1000" strokeDashoffset={1000 - (1000 * loadingProgress) / 100} className="text-red-600 transition-all duration-300 ease-out" />
               </svg>
-              <div className="absolute inset-0 flex items-center justify-center font-black text-3xl text-white">
-                {loadingProgress}%
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="font-black text-6xl md:text-8xl text-white italic drop-shadow-xl">{Math.round(loadingProgress)}%</span>
+                <span className="text-[10px] text-slate-500 tracking-[1.2em] uppercase mt-2">CALCULATING...</span>
               </div>
             </div>
-            <p className="text-2xl font-playfair italic text-white animate-pulse tracking-[0.2em]">
-              PREPARING THE REVEAL...
-            </p>
+            <p className="text-xl md:text-3xl font-playfair italic text-white animate-pulse tracking-[0.4em]">DECRYPTING HEART_PROTOCOL...</p>
           </div>
         )}
 
-        {/* STAGE 4: THE PRANK (SUCCESS) */}
         {stage === 'success' && (
-          <div className="text-center space-y-12 w-full py-10">
-            <div className="relative inline-block mb-10">
-               <span className="text-[150px] md:text-[200px] block animate-bounce drop-shadow-[0_0_50px_rgba(255,0,0,0.6)]">😹</span>
+          <div className="text-center space-y-12 md:space-y-24 w-full py-10 md:py-20 animate-scale-in">
+            <div className="relative inline-block">
+               <span className="text-[160px] md:text-[240px] block animate-bounce drop-shadow-[0_20px_80px_rgba(255,0,0,0.8)] select-none">😹</span>
+               <div className="absolute inset-0 bg-red-600/30 blur-[120px] -z-10 rounded-full animate-pulse" />
             </div>
             
-            <div className="glass p-12 md:p-20 rounded-[4rem] border-red-600/30 space-y-12 shadow-[0_0_100px_rgba(255,0,0,0.2)]">
-              <h3 className="text-5xl md:text-8xl font-playfair italic text-white font-black leading-none">
-                WHAT U THOUGHT?
-              </h3>
+            <div className="glass p-10 md:p-24 lg:p-32 rounded-[4rem] md:rounded-[8rem] border-red-600/20 space-y-16 md:space-y-24 shadow-2xl max-w-5xl mx-auto overflow-hidden">
+              <div className="space-y-6">
+                <h3 className="text-6xl md:text-[10rem] lg:text-[12rem] font-playfair italic text-white font-black leading-none drop-shadow-2xl uppercase tracking-tighter">GOTCHA!</h3>
+                <div className="h-[2px] w-32 bg-red-600 mx-auto opacity-70" />
+              </div>
               
-              <div className="space-y-8">
-                <p className="text-3xl md:text-5xl font-playfair text-slate-300 font-bold">
-                  IM GONNA PROPOSE?
-                </p>
-                
-                <div className="h-[2px] w-full max-w-[400px] bg-red-600 mx-auto opacity-30" />
-                
-                <p className="text-4xl md:text-7xl font-playfair italic text-red-600 font-black uppercase tracking-tighter animate-glitch">
-                  NOOOOO UR TOO OLD LADY!
-                </p>
-                
-                <div className="pt-10 space-y-8">
-                  <p className="text-sm text-slate-500 font-light tracking-[1em] uppercase">MESSAGE FROM THE HEART:</p>
-                  
-                  <div className="space-y-6">
-                    <p className="text-6xl md:text-[9rem] font-black text-red-600 uppercase tracking-tighter leading-none animate-shake inline-block">
-                      UR A STUPID
-                    </p>
-                    <p className="text-5xl md:text-9xl font-dancing text-white block mt-6 drop-shadow-[0_0_20px_rgba(255,255,255,0.4)]">
-                      AHAHAHAHAH!
-                    </p>
-                  </div>
+              <div className="space-y-12">
+                <p className="text-3xl md:text-6xl font-playfair text-slate-200 font-bold tracking-tight">IM GONNA PROPOSE?</p>
+                <p className="text-5xl md:text-[8rem] font-playfair italic text-red-600 font-black uppercase tracking-tighter animate-glitch leading-none py-6">NOOOOO UR TOO OLD LADY!</p>
+                <div className="pt-10 space-y-16">
+                    <p className="text-8xl md:text-[14rem] font-black text-red-800 uppercase tracking-tighter leading-none animate-shake inline-block drop-shadow-[0_0_50px_rgba(255,0,0,0.5)]">STUPID</p>
+                    <p className="text-6xl md:text-[10rem] font-dancing text-white block drop-shadow-[0_0_60px_rgba(255,255,255,0.4)]">AHAHAHAHAH!</p>
                 </div>
               </div>
 
-              <div className="pt-20">
-                <button
-                  onClick={() => window.location.reload()}
-                  className="px-14 py-5 rounded-full border border-red-500/20 text-red-500 hover:bg-red-600 hover:text-white transition-all text-xs uppercase tracking-[1em] font-black shadow-lg"
-                >
-                  START OVER
-                </button>
+              <div className="pt-32 space-y-16 border-t border-white/10">
+                <div className="space-y-10">
+                    <p className="text-xl md:text-3xl font-playfair text-white/70 italic">Actually... I'm only joking 99%.</p>
+                    <div className="space-y-6">
+                      <p className="text-5xl md:text-9xl font-playfair font-black text-yellow-500 tracking-widest uppercase">HAPPY NEW YEAR!</p>
+                      <p className="text-slate-400 max-w-2xl mx-auto text-lg md:text-2xl leading-relaxed italic px-4 font-light">
+                        {aiMessage ? aiMessage.poetry : "A fresh new year is at your door."}
+                      </p>
+                    </div>
+                    <div className="p-8 md:p-16 glass rounded-[3rem] md:rounded-[5rem] max-w-4xl mx-auto border-yellow-500/10">
+                      <p className="text-slate-100 text-xl md:text-3xl font-light leading-relaxed font-playfair">
+                        {aiMessage ? aiMessage.wishes : `Chaitra, wishing you a magnificent ${targetYear}!`}
+                      </p>
+                    </div>
+                </div>
+                
+                <div className="pt-10">
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="px-16 py-8 rounded-full border border-white/5 text-white/20 hover:bg-white hover:text-black hover:scale-105 active:scale-95 transition-all text-[10px] md:text-xs uppercase tracking-[2em] font-black shadow-2xl"
+                    >
+                      REPLAY PRANK
+                    </button>
+                </div>
               </div>
             </div>
           </div>
         )}
       </main>
 
-      <footer className="w-full flex justify-center py-16 opacity-30 pointer-events-none mt-auto">
-        <span className="text-red-700 text-[10px] md:text-xs tracking-[2em] uppercase font-black">
-          CHAITRA • 2025 • PRANKED
-        </span>
+      <footer className="w-full flex flex-col items-center justify-center py-20 opacity-30 pointer-events-none mt-auto gap-6">
+        <span className="text-red-900 text-[10px] md:text-xs tracking-[4em] uppercase font-black ml-[4em]">CHAITRA • {targetYear}</span>
+        <div className="h-[1px] w-24 bg-white/10" />
+        <span className="text-slate-800 text-[6px] md:text-[8px] uppercase tracking-[1.5em] font-mono">STUPIDITY_OVERLOAD_SUCCESSFUL</span>
       </footer>
     </div>
   );

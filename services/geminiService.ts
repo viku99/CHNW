@@ -1,13 +1,12 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
-export const fetchNewYearMessage = async (name: string) => {
+export const fetchNewYearMessage = async (name: string, year: number = 2026) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Create a beautiful, heartwarming, and poetic New Year 2025 message for someone named ${name}. 
+      contents: `Create a beautiful, heartwarming, and poetic New Year ${year} message for someone named ${name}. 
                  It should include a short poem (4-6 lines) and a warm personalized wish. 
                  The tone should be celebratory, inspiring, and sophisticated.`,
       config: {
@@ -36,7 +35,7 @@ export const fetchNewYearMessage = async (name: string) => {
     console.error("Error fetching Gemini message:", error);
     return {
       poetry: "As the clock strikes twelve and the night turns gold,\nA story of wonder begins to unfold.\nWith stars as your witness and dreams as your guide,\nMay happiness always be right by your side.",
-      wishes: `Happy New Year, ${name}! May 2025 be your most magical year yet, filled with laughter, love, and endless possibilities.`
+      wishes: `Happy New Year, ${name}! May ${year} be your most magical year yet, filled with laughter, love, and endless possibilities.`
     };
   }
 };
